@@ -1,0 +1,194 @@
+function(input, output, session) {
+
+  data_query <- reactive({
+
+    dfq <- pre_summary |>
+      left_join(select(all_animals, catalognumber, collectioncode, scientificname),
+                by = c("relatedcatalogitem"="catalognumber",
+                       "collectioncode"="collectioncode")) |>
+      left_join(select(stations, station_name, latitude, longitude, depth),
+                by = c("station"="station_name"))
+
+    dt_from <- as.Date(paste(input$year[1], "01", "01", sep = "-"))
+    dt_to <- as.Date(paste(input$year[2], "12", "31", sep = "-"))
+    dfq <- dfq |>
+      filter(min_detectdate >= dt_from,
+             max_detectdate <= dt_to)
+
+    if (!is.null(input$project)) {
+      dfq <- dfq |>
+        filter(collectioncode %in% !!input$project)
+    }
+
+    if (!is.null(input$locations)) {
+      dfq <- dfq |>
+        filter(station %in% !!input$locations)
+    }
+
+    if (!is.null(input$species)) {
+      dfq <- dfq |>
+        filter(scientificname %in% !!input$species)
+    }
+
+    if (!is.null(tag_code_list())) {
+      if (tag_code_list() != "")
+      dfq <- dfq |>
+        filter(fieldnumber %in% !!tag_code_list())
+    }
+
+    dfq
+  })
+
+  station_data <- reactive({
+
+    df <- data_query() |>
+      group_by(station, scientificname) |>
+      summarise(detection_count = sum(detection_count),
+                latitude = max(latitude),
+                longitude = max(longitude),
+                .groups = "drop") |>
+      collect()
+    df
+  })
+
+  observeEvent(input$tags, {
+
+    if (is.null(tag_code_list())) {
+      input_text <- ""
+    } else {
+      input_text <- paste(tag_code_list(), collapse = "\n")
+    }
+
+    showModal(modalDialog(
+      title = "Specify Tag Codes",
+      size = "l",
+      textAreaInput("tag_codes", "Enter or copy tag codes here, separated by commas or whitespace",
+                    value = input_text,
+                    placeholder = "A69-1206-776\nA69-1303-17245",
+                    width = "100%",
+                    rows = 6),
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("tag_ok", "OK")
+      )
+    ))
+
+  })
+
+  tag_code_list <- reactiveVal(NULL)
+  observeEvent(input$tag_ok, {
+
+    removeModal()
+    # extract the tag codes
+    tag_code_list(str_split_1(input$tag_codes, pattern = "\\s+|,\\s*"))
+
+  })
+
+  output$table <- renderPrint({
+
+    glimpse(data_query())
+
+  })
+
+  # map_data <- reactive({
+  #
+  #   # Lat/lon needs to come from station metadata (not all_animals, which is the
+  #   # location of tagging/capture)
+  #
+  #   # Limit by map bounds - have to pull this apart or else the generated SQL
+  #   # will be all messed up
+  #   bounds <- input$map_bounds
+  #   if (is.null(bounds)) {
+  #     return(NULL)
+  #   }
+  #   north <- bounds$north
+  #   south <- bounds$south
+  #   east <- bounds$east
+  #   west <- bounds$west
+  #
+  #
+  #   # Limit viewing to last 5000 in the query (how large can we go?)
+  #   top_n <- as.numeric(input$map_count)
+  #   df <- data_query() |>
+  #     filter(latitude <= north, latitude >= south,
+  #            longitude <= east, longitude >= west) |>
+  #     arrange(desc(max_detectdate)) |>
+  #     head(n = top_n) |>
+  #     collect()
+  #
+  # })
+
+  output$map <- renderLeaflet({
+
+    leaflet() |>
+      addProviderTiles("Esri.WorldGrayCanvas", group = "Gray") |>
+      addProviderTiles("OpenStreetMap.Mapnik", group = "Mapnik") |>
+      addProviderTiles("USGS.USTopo", group = "USTopo") |>
+      addProviderTiles("USGS.USImageryTopo", group = "USImageTopo") |>
+      addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") |>
+      setView(-120, 38, zoom = 7) |>
+      addLayersControl(baseGroups = c("Mapnik", "USTopo",
+                                      "USImageTopo", "NatGeo", "Gray"))
+
+  })
+
+  # color palette for the map legend
+  # pal <- colorFactor(
+  #   palette = "viridis",
+  #   domain = species_available
+  # )
+  pal <- colorNumeric(
+    palette = "viridis",
+    domain = NULL
+  )
+
+  # Mapping
+  observe({
+
+    # Only update if this is the currently active tab - otherwise leafletProxy
+    # will not work
+    if (input$tabs != "Map") {
+      return(NULL)
+    }
+
+    #d <- map_data()
+    d <- station_data()
+    if (is.null(d)) {
+      return(NULL)
+    }
+
+    lp <- leafletProxy("map", session = session, data = d) |>
+      clearMarkers() |>
+      clearControls() |>
+      clearMarkerClusters()
+
+    if (nrow(d) > 0) {
+      lp <- lp |>
+        addCircleMarkers(radius = 2, lng = ~longitude, lat = ~latitude,
+                         # color = ~pal(scientificname),
+                         color = ~pal(detection_count),
+                         # fillColor = ~pal(scientificname),
+                         label = ~station,
+                         layerId = ~station) |>
+
+
+                         #layerId = ~rcvrcatnumber, # we don't have this for everything?
+                         # clusterOptions = markerClusterOptions(freezeAtZoom = "maxKeepSpiderify",
+#                                                               maxClusterRadius = 20)) |>
+        addLegend(position = "bottomleft", pal = pal, values = ~detection_count)
+    }
+    lp
+
+  })
+
+  output$selected <- renderPrint({
+
+    click <- input$map_marker_click
+    validate(need(!is.null(click), "Select a point"))
+browser()
+    id <- click$id
+    id
+
+  })
+
+}

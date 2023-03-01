@@ -9,6 +9,7 @@ library(bslib)
 library(leaflet)
 library(V8)
 library(DT)
+library(plotly)
 
 # Database connection
 args <- config::get("dataconnection")

@@ -1,5 +1,33 @@
 function(input, output, session) {
 
+  # Dynamic UI ----
+
+  observeEvent(input$tags, {
+
+    if (is.null(tag_code_list())) {
+      input_text <- ""
+    } else {
+      input_text <- paste(tag_code_list(), collapse = "\n")
+    }
+
+    showModal(modalDialog(
+      title = "Specify Tag Codes",
+      size = "l",
+      textAreaInput("tag_codes", "Enter or copy tag codes here, separated by commas or whitespace",
+                    value = input_text,
+                    placeholder = "A69-1206-776\nA69-1303-17245",
+                    width = "100%",
+                    rows = 6),
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("tag_ok", "OK")
+      )
+    ))
+
+  })
+
+  # Data reactives ----
+
   data_query <- reactive({
 
     dfq <- pre_summary |>
@@ -51,29 +79,7 @@ function(input, output, session) {
     df
   })
 
-  observeEvent(input$tags, {
 
-    if (is.null(tag_code_list())) {
-      input_text <- ""
-    } else {
-      input_text <- paste(tag_code_list(), collapse = "\n")
-    }
-
-    showModal(modalDialog(
-      title = "Specify Tag Codes",
-      size = "l",
-      textAreaInput("tag_codes", "Enter or copy tag codes here, separated by commas or whitespace",
-                    value = input_text,
-                    placeholder = "A69-1206-776\nA69-1303-17245",
-                    width = "100%",
-                    rows = 6),
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("tag_ok", "OK")
-      )
-    ))
-
-  })
 
   tag_code_list <- reactiveVal(NULL)
   observeEvent(input$tag_ok, {
@@ -84,39 +90,7 @@ function(input, output, session) {
 
   })
 
-  output$table <- renderPrint({
-
-    glimpse(data_query())
-
-  })
-
-  # map_data <- reactive({
-  #
-  #   # Lat/lon needs to come from station metadata (not all_animals, which is the
-  #   # location of tagging/capture)
-  #
-  #   # Limit by map bounds - have to pull this apart or else the generated SQL
-  #   # will be all messed up
-  #   bounds <- input$map_bounds
-  #   if (is.null(bounds)) {
-  #     return(NULL)
-  #   }
-  #   north <- bounds$north
-  #   south <- bounds$south
-  #   east <- bounds$east
-  #   west <- bounds$west
-  #
-  #
-  #   # Limit viewing to last 5000 in the query (how large can we go?)
-  #   top_n <- as.numeric(input$map_count)
-  #   df <- data_query() |>
-  #     filter(latitude <= north, latitude >= south,
-  #            longitude <= east, longitude >= west) |>
-  #     arrange(desc(max_detectdate)) |>
-  #     head(n = top_n) |>
-  #     collect()
-  #
-  # })
+  # Map tab ----
 
   output$map <- renderLeaflet({
 
@@ -132,17 +106,13 @@ function(input, output, session) {
 
   })
 
-  # color palette for the map legend
-  # pal <- colorFactor(
-  #   palette = "viridis",
-  #   domain = species_available
-  # )
+  # Color palette for the map
   pal <- colorNumeric(
     palette = "viridis",
     domain = NULL
   )
 
-  # Mapping
+  # Update the map when something changes
   observe({
 
     # Only update if this is the currently active tab - otherwise leafletProxy
@@ -151,44 +121,83 @@ function(input, output, session) {
       return(NULL)
     }
 
-    #d <- map_data()
     d <- station_data()
     if (is.null(d)) {
       return(NULL)
     }
 
+    # Clear out the previous data
     lp <- leafletProxy("map", session = session, data = d) |>
       clearMarkers() |>
       clearControls() |>
       clearMarkerClusters()
 
+    # Add the new data
     if (nrow(d) > 0) {
       lp <- lp |>
         addCircleMarkers(radius = 2, lng = ~longitude, lat = ~latitude,
-                         # color = ~pal(scientificname),
                          color = ~pal(detection_count),
-                         # fillColor = ~pal(scientificname),
                          label = ~station,
                          layerId = ~station) |>
-
-
-                         #layerId = ~rcvrcatnumber, # we don't have this for everything?
-                         # clusterOptions = markerClusterOptions(freezeAtZoom = "maxKeepSpiderify",
-#                                                               maxClusterRadius = 20)) |>
         addLegend(position = "bottomleft", pal = pal, values = ~detection_count)
     }
     lp
 
   })
 
-  output$selected <- renderPrint({
+  # A plot to display when a station on the map is clicked
+  output$selected <- renderPlotly({
 
     click <- input$map_marker_click
     validate(need(!is.null(click), "Select a point"))
-browser()
+
     id <- click$id
-    id
+
+    df <- data_query() |>
+      filter(station == id) |>
+      collect() |>
+      mutate(detection_count = as.numeric(detection_count),
+             scientificname = if_else(is.na(scientificname), " Not Listed",
+                                      scientificname))
+
+    g <- ggplot(df, aes(x = min_detectdate, y = scientificname,
+                   color = detection_count)) +
+      geom_point() +
+      scale_color_viridis_c() +
+      labs(title = id,
+           x = "detection date",
+           color = "detection count") +
+      theme(axis.title.y = element_blank())
+
+    ggplotly(g)
 
   })
+
+  # Data tab ----
+
+  output$dt <- DT::renderDataTable({
+    df <- data_query() |>
+      collect()
+    datatable(df, class = "compact stripe hover nowrap",
+              rownames = FALSE,
+              fillContainer = TRUE,
+              options = list(
+                pageLength = 30,
+                dom = "ftpi"
+                )
+              )
+
+  })
+
+  output$download <- downloadHandler(
+    filename = function() {
+      paste0("PATH_extract_", Sys.Date(), ".csv")
+    },
+    content = function(filename) {
+      df <- data_query() |>
+        collect()
+      write_csv(df, filename)
+    }
+  )
 
 }

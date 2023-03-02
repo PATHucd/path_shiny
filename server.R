@@ -59,9 +59,13 @@ function(input, output, session) {
     }
 
     if (!is.null(tag_code_list())) {
-      if (tag_code_list() != "")
-      dfq <- dfq |>
-        filter(fieldnumber %in% !!tag_code_list())
+      if (length(tag_code_list()) > 1) {
+        dfq <- dfq |>
+          filter(fieldnumber %in% !!tag_code_list())
+      } else if (tag_code_list() != "") {
+        dfq <- dfq |>
+          filter(fieldnumber %in% !!tag_code_list())
+      }
     }
 
     dfq
@@ -71,9 +75,9 @@ function(input, output, session) {
 
     df <- data_query() |>
       group_by(station, scientificname) |>
-      summarise(detection_count = sum(detection_count),
-                latitude = max(latitude),
-                longitude = max(longitude),
+      summarise(detection_count = sum(detection_count, na.rm = TRUE),
+                latitude = max(latitude, na.rm = TRUE),
+                longitude = max(longitude, na.rm = TRUE),
                 .groups = "drop") |>
       collect()
     df
@@ -100,7 +104,7 @@ function(input, output, session) {
       addProviderTiles("USGS.USTopo", group = "USTopo") |>
       addProviderTiles("USGS.USImageryTopo", group = "USImageTopo") |>
       addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") |>
-      setView(-120, 38, zoom = 7) |>
+      setView(-120, 39, zoom = 7) |>
       addLayersControl(baseGroups = c("Mapnik", "USTopo",
                                       "USImageTopo", "NatGeo", "Gray"))
 

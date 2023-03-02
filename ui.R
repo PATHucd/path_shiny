@@ -26,6 +26,7 @@ fluidPage(
           ),
         tabPanel(
           title = "Data",
+          # Set padding on the datatable cells
           tags$style('#dt td {padding: 0 1em}'),
           downloadButton("download"),
           br(), br(),

@@ -168,6 +168,7 @@ function(input, output, session) {
                    color = detection_count)) +
       geom_point() +
       scale_color_viridis_c() +
+      scale_x_datetime(labels = scales::label_date_short()) +
       labs(title = id,
            x = "detection date",
            color = "detection count") +

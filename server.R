@@ -35,7 +35,8 @@ function(input, output, session) {
                 by = c("relatedcatalogitem"="catalognumber",
                        "collectioncode"="collectioncode")) |>
       left_join(select(stations, station_name, latitude, longitude, depth),
-                by = c("station"="station_name"))
+                by = c("station"="station_name")) |>
+      left_join(species_tbl, by = "scientificname")
 
     dt_from <- as.Date(paste(input$year[1], "01", "01", sep = "-"))
     dt_to <- as.Date(paste(input$year[2], "12", "31", sep = "-"))
@@ -55,7 +56,7 @@ function(input, output, session) {
 
     if (!is.null(input$species)) {
       dfq <- dfq |>
-        filter(scientificname %in% !!input$species)
+        filter(commonname %in% !!input$species)
     }
 
     if (!is.null(tag_code_list())) {
@@ -74,7 +75,7 @@ function(input, output, session) {
   station_data <- reactive({
 
     df <- data_query() |>
-      group_by(station, scientificname) |>
+      group_by(station, commonname) |>
       summarise(detection_count = sum(detection_count, na.rm = TRUE),
                 latitude = max(latitude, na.rm = TRUE),
                 longitude = max(longitude, na.rm = TRUE),
@@ -161,10 +162,10 @@ function(input, output, session) {
       filter(station == id) |>
       collect() |>
       mutate(detection_count = as.numeric(detection_count),
-             scientificname = if_else(is.na(scientificname), " Not Listed",
-                                      scientificname))
+             commonname = if_else(is.na(commonname), " Not Listed",
+                                      commonname))
 
-    g <- ggplot(df, aes(x = min_detectdate, y = scientificname,
+    g <- ggplot(df, aes(x = min_detectdate, y = commonname,
                    color = detection_count)) +
       geom_point() +
       scale_color_viridis_c() +

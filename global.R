@@ -26,8 +26,10 @@ con <- pool::dbPool(odbc::odbc(),
 all_animals <- tbl(con, in_schema("discovery", "all_animals"))
 pre_summary <- tbl(con, in_schema("discovery", "detection_pre_summary"))
 stations <- tbl(con, in_schema("discovery", "stations_header"))
-
-
+species_tbl <- tbl(con, in_schema("discovery", "species_list")) |>
+  select(scientificname, commonname) |>
+  filter(scientificname %in% species_available) |>
+  distinct()
 
 # Available options for the UI
 year_range <- pre_summary |>
@@ -50,6 +52,15 @@ species_available <- all_animals |>
   distinct() |>
   pull(scientificname) |>
   sort()
+
+species <- tbl(con, in_schema("discovery", "species_list")) |>
+  select(scientificname, commonname) |>
+  filter(scientificname %in% species_available) |>
+  distinct() |>
+  collect()
+
+common_names <- species_tbl |>
+  pull(commonname)
 
 # Update leaflet providers to get some of the newer maps
 leaflet.providers::use_providers(leaflet.providers::get_providers())

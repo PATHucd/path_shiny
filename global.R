@@ -26,6 +26,13 @@ con <- pool::dbPool(odbc::odbc(),
 all_animals <- tbl(con, in_schema("discovery", "all_animals"))
 pre_summary <- tbl(con, in_schema("discovery", "detection_pre_summary"))
 stations <- tbl(con, in_schema("discovery", "stations_header"))
+
+species_available <- all_animals |>
+  select(scientificname) |>
+  distinct() |>
+  pull(scientificname) |>
+  sort()
+
 species_tbl <- tbl(con, in_schema("discovery", "species_list")) |>
   select(scientificname, commonname) |>
   filter(scientificname %in% species_available) |>
@@ -47,12 +54,6 @@ locations_available <- pre_summary |>
   pull(station) |>
   sort()
 
-species_available <- all_animals |>
-  select(scientificname) |>
-  distinct() |>
-  pull(scientificname) |>
-  sort()
-
 species <- tbl(con, in_schema("discovery", "species_list")) |>
   select(scientificname, commonname) |>
   filter(scientificname %in% species_available) |>
@@ -66,7 +67,47 @@ common_names <- species_tbl |>
 leaflet.providers::use_providers(leaflet.providers::get_providers())
 
 
+# A simple function to add single quotes around a string.  Useful in constructing SQL clauses.
+sq <- function(x) {
+  paste0("\'", as.character(x), "\'")
+}
+
 # Shutdown chores
 onStop(function() {
   poolClose(con)
 })
+
+# SQL Queries to PATH details that are too complex to do in R
+sql_receiver_meta <- "select
+	rcv.otn_array, --otn_array varchar NULL,
+	rcv.station_name as station_no, --station_no varchar NULL,
+	replace(rcv.deploy_date::text, ' ', 'T') as deploy_date_time, --deploy_date_time varchar NULL,
+	rcv.dep_lat::text as deploy_lat, --deploy_lat varchar NULL,
+	rcv.dep_long::text as deploy_long, --deploy_long varchar NULL,
+	rcv.bottom_depth, --bottom_depth varchar NULL,
+	rcv.receiver_depth::text as instrument_depth,--instrument_depth varchar NULL,
+	rcv.rcv_model_no as ins_model_no, --ins_model_no varchar NULL,
+	rcv.rcv_serial_no as ins_serial_no, --ins_serial_no varchar NULL,
+	moor_tra.fieldnumber as transmitter, --transmitter varchar NULL,
+	moor_tra.instrumentmodel as transmit_model, --transmit_model varchar NULL,
+	coalesce(interim_recover_ind, rcv.recover_ind) as recovered, --recovered varchar NULL,
+	replace(rcv.recover_date::text, ' ', 'T') as recover_date_time, --recover_date_time varchar NULL,
+	rcv.recover_lat::text as recover_lat, --recover_lat varchar NULL,
+	rcv.recover_long::text as recover_long, --recover_long varchar NULL,
+	case when moor_down.catalognumber is null then 'n' else 'y' end as data_downloaded, --data_downloaded varchar NULL,
+	moor_down.dat as download_date_time, --download_date_time varchar NULL,
+	rcv.notes as comments --comments varchar NULL
+from ucdhist.rcvr_locations rcv
+left join (select * from ucdhist.moorings where basisofrecord ='TRANSMITTER') moor_tra
+on moor_tra.collectornumber = rcv.rcv_serial_no and moor_tra.relatedcatalogitem = rcv.station_name
+left join (
+	select catalognumber, relatedcatalogitem, coalesce(enddatetime, startdatetime) as dat from ucdhist.moorings where basisofrecord = 'DOWNLOAD' and
+	(relatedcatalogitem, coalesce(enddatetime, startdatetime)) in (
+		select relatedcatalogitem, max(coalesce(enddatetime, startdatetime))
+		from ucdhist.moorings where basisofrecord = 'DOWNLOAD'
+		group by 1
+	)
+) moor_down
+on moor_down.relatedcatalogitem = rcv.catalognumber
+where rcv.station_name = ?station"
+

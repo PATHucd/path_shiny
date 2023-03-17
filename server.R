@@ -179,6 +179,26 @@ function(input, output, session) {
 
   })
 
+  # Receiver metadata to display when plot is clicked
+  output$receiver <- DT::renderDataTable({
+
+    click <- input$map_marker_click
+    validate(need(!is.null(click), "Select a point"))
+
+    station <- click$id
+
+    # query <- paste0(sql_receiver_meta, sq(station))
+    # df <- dbGetQuery(con, query)
+    #
+    # dbBind(rs, station)
+    # df <- dbFetch(rs)
+
+    q <- sqlInterpolate(con, sql_receiver_meta, station = station)
+    df <- dbGetQuery(con, q)
+    datatable(df)
+
+  })
+
   # Data tab ----
 
   output$dt <- DT::renderDataTable({

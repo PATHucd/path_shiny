@@ -22,7 +22,8 @@ fluidPage(
         tabPanel(
           title = "Map",
           leafletOutput("map", height = "500px"),
-          plotlyOutput("selected")
+          plotlyOutput("selected"),
+          DT::dataTableOutput("receiver")
           ),
         tabPanel(
           title = "Data",

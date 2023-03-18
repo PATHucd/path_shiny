@@ -10,7 +10,8 @@ fluidPage(
               tabsetPanel(
                 id = "tabs",
                 tabPanel("Stations", stationsUI("stations")),
-                tabPanel("Summary", summaryUI("summary"))
+                tabPanel("Summary", summaryUI("summary")),
+                tabPanel("Tag History", tagUI("tag"))
               )
     )
 

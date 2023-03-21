@@ -2,19 +2,37 @@ tagUI <- function(id, label = 'Tag History UI') {
   ns <- NS(id)
 
   tagList(
-    textInput(ns("tag_code"), "Tag Code", placeholder = "A69-1303-4324"),
-    selectInput(ns("year"), "Year", choices = seq(year_range$min, year_range$max),
-                selected = 2017L),
-    leafletOutput(ns("map"), height = "500px")
+    fluidRow(
+      column(width = 3, selectInput(ns("year"), "Year",
+                                    choices = seq(year_range$min, year_range$max),
+                                    selected = 2017L)),
+      column(width = 3, selectInput(ns("tag_code"), "Tag Code",
+                                       choices = initial_tags)),
+    ),
+    fluidRow(
+      leafletOutput(ns("map"), height = "500px")
+    )
   )
 }
 
-# Not sure if we'll need the data_query here - assume we'll need parent because
-# for leafletProxy
-tagServer <- function(id, data_query, parent) {
+tagServer <- function(id, parent) {
   moduleServer(
     id,
     function(input, output, session) {
+
+      # update list of tags based on year
+      observeEvent(input$year, {
+
+        dbtable <- tbl(con, in_schema("ucdhist", paste0("otn_detections_", input$year)))
+        tags <- dbtable |>
+          select(fieldnumber) |>
+          distinct() |>
+          collect()
+
+        updateSelectInput(session, "tag_code", choices = tags)
+
+      })
+
 
       tag_history <- reactive({
 
@@ -24,7 +42,8 @@ tagServer <- function(id, data_query, parent) {
         dbtable <- tbl(con, in_schema("ucdhist", paste0("otn_detections_", input$year)))
         df <- dbtable |>
           filter(fieldnumber == !!input$tag_code) |>
-          collect()
+          collect() |>
+          mutate(dt_num = as.numeric(datecollected))
 
       })
 
@@ -42,11 +61,16 @@ tagServer <- function(id, data_query, parent) {
 
       })
 
-      # Color palette for the map
-      pal <- colorNumeric(
-        palette = "viridis",
-        domain = NULL
-      )
+      # An extension of the leaflet label formatter to support dates
+      myLabelFormat = function(...,dates=FALSE){
+        if(dates){
+          function(type = "numeric", cuts){
+            as.Date(as.POSIXct(cuts, origin="1970-01-01"))
+          }
+        }else{
+          labelFormat(...)
+        }
+      }
 
       # Update the map when something changes
       observe({
@@ -62,6 +86,12 @@ tagServer <- function(id, data_query, parent) {
           return(NULL)
         }
 
+        # Color palette for the map
+        pal <- colorNumeric(
+          palette = "viridis",
+          domain = d$dt_num
+        )
+
         # Clear out the previous data
         lp <- leafletProxy("map", session = session, data = d) |>
           clearMarkers() |>
@@ -73,9 +103,11 @@ tagServer <- function(id, data_query, parent) {
         if (nrow(d) > 0) {
           lp <- lp |>
             addCircleMarkers(radius = 2, lng = ~longitude, lat = ~latitude,
-                             color = ~pal(datecollected),
-                             label = ~datecollected) #|>
-            #addLegend(position = "bottomleft", pal = pal, values = ~datecollected)
+                             color = ~pal(dt_num),
+                             label = ~datecollected) |>
+            addLegend(position = "bottomleft", pal = pal,
+                      values = ~dt_num,
+                      labFormat = myLabelFormat(dates = TRUE))
         }
         lp
 

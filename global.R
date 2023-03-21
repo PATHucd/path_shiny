@@ -63,6 +63,12 @@ species <- tbl(con, in_schema("discovery", "species_list")) |>
 common_names <- species_tbl |>
   pull(commonname)
 
+default_year <- 2017L
+initial_tags <- tbl(con, in_schema("ucdhist", paste0("otn_detections_", default_year))) |>
+  select(fieldnumber) |>
+  distinct() |>
+  collect()
+
 # Update leaflet providers to get some of the newer maps
 leaflet.providers::use_providers(leaflet.providers::get_providers())
 

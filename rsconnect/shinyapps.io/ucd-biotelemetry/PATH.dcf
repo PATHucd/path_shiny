@@ -1,0 +1,14 @@
+name: PATH
+title: PATH
+username:
+account: ucd-biotelemetry
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 8103364
+bundleId: 6994690
+url: https://ucd-biotelemetry.shinyapps.io/PATH/
+when: 1679521751.46417
+lastSyncTime: 1679521751.46418
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: server_old.R|ui_old.R|background
